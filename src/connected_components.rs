@@ -1,4 +1,5 @@
 use numpy::{PyArray2, PyReadonlyArray2, PyReadonlyArray3};
+use petgraph::graph::UnGraph;
 use pyo3::prelude::*;
 use std::collections::{HashMap, VecDeque};
 
@@ -108,6 +109,7 @@ struct Component2D {
     centroid: (f64, f64),
     frontier_score: f64,
     mean_contour_value: f64,
+    graph: UnGraph<usize, f32>,
 }
 
 #[derive(Debug)]
@@ -116,6 +118,7 @@ struct Component3D {
     centroid: (f64, f64, f64),
     frontier_score: f64,
     mean_contour_value: f64,
+    graph: UnGraph<usize, f32>,
 }
 
 fn find_components_2d(
@@ -258,11 +261,15 @@ fn flood_fill_2d(
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
+    // Build graph with flattened node indices
+    let graph = build_flattened_graph_2d(&pixels, contours);
+
     Component2D {
         pixels,
         centroid,
         frontier_score,
         mean_contour_value,
+        graph,
     }
 }
 
@@ -338,11 +345,15 @@ fn flood_fill_3d(
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
+    // Build graph with flattened node indices
+    let graph = build_flattened_graph_3d(&pixels, contours);
+
     Component3D {
         pixels,
         centroid,
         frontier_score,
         mean_contour_value,
+        graph,
     }
 }
 
@@ -389,6 +400,10 @@ fn components_to_python_dict_2d<'py>(
             component.mean_contour_value.into_py(py),
         );
 
+        // Convert graph to Python-readable format
+        let graph_data = convert_graph_2d_to_python(&component.graph, py)?;
+        node_attrs.insert("graph".to_string(), graph_data);
+
         let pixels_vec: Vec<Vec<i32>> = component
             .pixels
             .into_iter()
@@ -428,6 +443,10 @@ fn components_to_python_dict_3d<'py>(
             component.mean_contour_value.into_py(py),
         );
 
+        // Convert graph to Python-readable format
+        let graph_data = convert_graph_3d_to_python(&component.graph, py)?;
+        node_attrs.insert("graph".to_string(), graph_data);
+
         let pixels_vec: Vec<Vec<i32>> = component
             .pixels
             .into_iter()
@@ -442,4 +461,157 @@ fn components_to_python_dict_3d<'py>(
     }
 
     Ok(result.into_py(py))
+}
+
+// TODO: remove this
+fn convert_graph_2d_to_python<'py>(
+    graph: &UnGraph<usize, f32>,
+    py: Python<'py>,
+) -> PyResult<PyObject> {
+    let mut graph_dict = HashMap::new();
+
+    // Extract nodes - already flattened as usize indices
+    let mut nodes = Vec::new();
+    for node_idx in graph.node_indices() {
+        nodes.push(graph[node_idx] as i32);
+    }
+
+    // Extract edges with weights
+    let mut edges = Vec::new();
+    for edge_idx in graph.edge_indices() {
+        let (node_a, node_b) = graph.edge_endpoints(edge_idx).unwrap();
+        let weight = graph[edge_idx];
+
+        edges.push(vec![graph[node_a] as f32, graph[node_b] as f32, weight]);
+    }
+
+    // Convert to Python arrays
+    let nodes_py = PyArray2::from_vec2_bound(py, &[nodes]).unwrap();
+    let edges_vec: Vec<Vec<f32>> = edges;
+    let edges_py = PyArray2::from_vec2_bound(py, &edges_vec).unwrap();
+
+    graph_dict.insert("nodes".to_string(), nodes_py.into_py(py));
+    graph_dict.insert("edges".to_string(), edges_py.into_py(py));
+
+    Ok(graph_dict.into_py(py))
+}
+
+// TODO: remove this
+fn convert_graph_3d_to_python<'py>(
+    graph: &UnGraph<usize, f32>,
+    py: Python<'py>,
+) -> PyResult<PyObject> {
+    let mut graph_dict = HashMap::new();
+
+    // Extract nodes - already flattened as usize indices
+    let mut nodes = Vec::new();
+    for node_idx in graph.node_indices() {
+        nodes.push(graph[node_idx] as i32);
+    }
+
+    // Extract edges with weights
+    let mut edges = Vec::new();
+    for edge_idx in graph.edge_indices() {
+        let (node_a, node_b) = graph.edge_endpoints(edge_idx).unwrap();
+        let weight = graph[edge_idx];
+
+        edges.push(vec![graph[node_a] as f32, graph[node_b] as f32, weight]);
+    }
+
+    // Convert to Python arrays
+    let nodes_py = PyArray2::from_vec2_bound(py, &[nodes]).unwrap();
+    let edges_vec: Vec<Vec<f32>> = edges;
+    let edges_py = PyArray2::from_vec2_bound(py, &edges_vec).unwrap();
+
+    graph_dict.insert("nodes".to_string(), nodes_py.into_py(py));
+    graph_dict.insert("edges".to_string(), edges_py.into_py(py));
+
+    Ok(graph_dict.into_py(py))
+}
+
+fn build_flattened_graph_2d(
+    pixels: &[(usize, usize)],
+    contours: &ndarray::ArrayView2<f64>,
+) -> UnGraph<usize, f32> {
+    let mut graph = UnGraph::new_undirected();
+    let mut pixel_to_node = HashMap::new();
+
+    // Add nodes with flattened indices
+    for (idx, &pixel) in pixels.iter().enumerate() {
+        let node_idx = graph.add_node(idx);
+        pixel_to_node.insert(pixel, node_idx);
+    }
+
+    // 4-connectivity for 2D
+    let directions = [(-1, 0), (0, -1), (0, 1), (1, 0)];
+
+    // Add edges between adjacent pixels
+    for &(i, j) in pixels {
+        if let Some(&node_a) = pixel_to_node.get(&(i, j)) {
+            for (di, dj) in &directions {
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+
+                if ni >= 0 && nj >= 0 {
+                    let neighbor = (ni as usize, nj as usize);
+                    if let Some(&node_b) = pixel_to_node.get(&neighbor) {
+                        // Calculate edge weight as average of contour values
+                        let weight =
+                            ((contours[[i, j]] + contours[[neighbor.0, neighbor.1]]) * 0.5) as f32;
+                        graph.add_edge(node_a, node_b, weight);
+                    }
+                }
+            }
+        }
+    }
+
+    graph
+}
+
+fn build_flattened_graph_3d(
+    pixels: &[(usize, usize, usize)],
+    contours: &ndarray::ArrayView3<f64>,
+) -> UnGraph<usize, f32> {
+    let mut graph = UnGraph::new_undirected();
+    let mut pixel_to_node = HashMap::new();
+
+    // Add nodes with flattened indices
+    for (idx, &pixel) in pixels.iter().enumerate() {
+        let node_idx = graph.add_node(idx);
+        pixel_to_node.insert(pixel, node_idx);
+    }
+
+    // 6-connectivity for 3D
+    let directions = [
+        (-1, 0, 0),
+        (0, -1, 0),
+        (0, 0, -1),
+        (0, 0, 1),
+        (0, 1, 0),
+        (1, 0, 0),
+    ];
+
+    // Add edges between adjacent pixels
+    for &(k, i, j) in pixels {
+        if let Some(&node_a) = pixel_to_node.get(&(k, i, j)) {
+            for (dk, di, dj) in &directions {
+                let nk = k as i32 + dk;
+                let ni = i as i32 + di;
+                let nj = j as i32 + dj;
+
+                if nk >= 0 && ni >= 0 && nj >= 0 {
+                    let neighbor = (nk as usize, ni as usize, nj as usize);
+                    if let Some(&node_b) = pixel_to_node.get(&neighbor) {
+                        // Calculate edge weight as average of contour values
+                        let weight = ((contours[[k, i, j]]
+                            + contours[[neighbor.0, neighbor.1, neighbor.2]])
+                            * 0.5) as f32;
+                        graph.add_edge(node_a, node_b, weight);
+                    }
+                }
+            }
+        }
+    }
+
+    graph
 }

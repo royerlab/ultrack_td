@@ -27,6 +27,13 @@ dependencies = [
     "tracksdata @ git+https://github.com/royerlab/tracksdata.git@dev",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-ruff",
+]
+
 [project.urls]
 Documentation = "https://github.com/royerlab/ultrack-td#readme"
 Issues = "https://github.com/royerlab/ultrack-td/issues"

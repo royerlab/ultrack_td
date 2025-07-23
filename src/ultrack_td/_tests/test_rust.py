@@ -49,6 +49,12 @@ def test_connected_components_2d() -> None:
     assert "frontier_score" in comp1
     assert "mean_contour_value" in comp1
     assert "pixels" in comp1
+    assert "graph" in comp1
+
+    # Check graph structure
+    graph = comp1["graph"]
+    assert "nodes" in graph
+    assert "edges" in graph
 
     # Check second component (right side)
     comp2 = components[1]
@@ -83,6 +89,12 @@ def test_connected_components_3d() -> None:
         assert "frontier_score" in comp
         assert "mean_contour_value" in comp
         assert "pixels" in comp
+        assert "graph" in comp
+
+        # Check graph structure
+        graph = comp["graph"]
+        assert "nodes" in graph
+        assert "edges" in graph
 
 
 def test_connected_components_generic() -> None:
