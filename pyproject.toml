@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "ultrack-td"
@@ -25,7 +25,6 @@ classifiers = [
 ]
 dependencies = [
     "tracksdata @ git+https://github.com/royerlab/tracksdata.git@dev",
-    "higra",
 ]
 
 [project.urls]
@@ -33,14 +32,10 @@ Documentation = "https://github.com/royerlab/ultrack-td#readme"
 Issues = "https://github.com/royerlab/ultrack-td/issues"
 Source = "https://github.com/royerlab/ultrack-td"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.hatch.version]
-source = "vcs"
-
-[tool.hatch.build.hooks.vcs]
-version-file = "src/ultrack_td/__about__.py"
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "src"
+module-name = "ultrack_td._rustlib"
 
 # https://docs.astral.sh/ruff
 [tool.ruff]
