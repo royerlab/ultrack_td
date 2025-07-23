@@ -11,11 +11,12 @@ def test_connected_components_2d() -> None:
     # Create a simple 2D binary mask with two separate components
     foreground = np.array(
         [
-            [True, True, False, False, False],
-            [True, False, False, True, True],
-            [False, False, False, True, False],
-            [False, False, False, False, False],
-        ]
+            [1, 1, 0, 0, 0],
+            [1, 0, 0, 1, 1],
+            [0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0],
+        ],
+        dtype=bool,
     )
 
     # Create corresponding contour values
@@ -42,9 +43,9 @@ def test_connected_components_2d() -> None:
 
     # Check first component (top-left)
     comp1 = components[0]
-    assert comp1["area"] == 2  # 2 pixels
-    assert "centroid_i" in comp1
-    assert "centroid_j" in comp1
+    assert comp1["area"] == 3  # 3 pixels
+    assert "y" in comp1
+    assert "x" in comp1
     assert "frontier_score" in comp1
     assert "mean_contour_value" in comp1
     assert "pixels" in comp1
@@ -56,7 +57,7 @@ def test_connected_components_2d() -> None:
 
 def test_connected_components_3d() -> None:
     # Create a simple 3D binary mask
-    foreground = np.array([[[True, False], [False, True]], [[True, False], [False, False]]])
+    foreground = np.array([[[1, 0], [0, 1]], [[1, 0], [0, 0]]], dtype=bool)
 
     # Create corresponding contour values
     contours = np.array([[[1.0, 0.0], [0.0, 2.0]], [[1.5, 0.0], [0.0, 0.0]]])
@@ -76,9 +77,9 @@ def test_connected_components_3d() -> None:
     # Check component attributes exist
     for comp in components:
         assert "area" in comp
-        assert "centroid_k" in comp
-        assert "centroid_i" in comp
-        assert "centroid_j" in comp
+        assert "z" in comp
+        assert "y" in comp
+        assert "x" in comp
         assert "frontier_score" in comp
         assert "mean_contour_value" in comp
         assert "pixels" in comp

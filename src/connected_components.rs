@@ -221,12 +221,7 @@ fn flood_fill_2d(
     visited[start_i][start_j] = true;
 
     // 4-connectivity for 2D
-    let directions = [
-        (-1, 0),
-        (0, -1),
-        (0, 1),
-        (1, 0),
-    ];
+    let directions = [(-1, 0), (0, -1), (0, 1), (1, 0)];
 
     while let Some((i, j)) = queue.pop_front() {
         pixels.push((i, j));
@@ -383,8 +378,8 @@ fn components_to_python_dict_2d<'py>(
 
         node_attrs.insert("id".to_string(), idx.into_py(py));
         node_attrs.insert("area".to_string(), component.pixels.len().into_py(py));
-        node_attrs.insert("centroid_i".to_string(), component.centroid.0.into_py(py));
-        node_attrs.insert("centroid_j".to_string(), component.centroid.1.into_py(py));
+        node_attrs.insert("y".to_string(), component.centroid.0.into_py(py));
+        node_attrs.insert("x".to_string(), component.centroid.1.into_py(py));
         node_attrs.insert(
             "frontier_score".to_string(),
             component.frontier_score.into_py(py),
@@ -421,9 +416,9 @@ fn components_to_python_dict_3d<'py>(
 
         node_attrs.insert("id".to_string(), idx.into_py(py));
         node_attrs.insert("area".to_string(), component.pixels.len().into_py(py));
-        node_attrs.insert("centroid_k".to_string(), component.centroid.0.into_py(py));
-        node_attrs.insert("centroid_i".to_string(), component.centroid.1.into_py(py));
-        node_attrs.insert("centroid_j".to_string(), component.centroid.2.into_py(py));
+        node_attrs.insert("z".to_string(), component.centroid.0.into_py(py));
+        node_attrs.insert("y".to_string(), component.centroid.1.into_py(py));
+        node_attrs.insert("x".to_string(), component.centroid.2.into_py(py));
         node_attrs.insert(
             "frontier_score".to_string(),
             component.frontier_score.into_py(py),
