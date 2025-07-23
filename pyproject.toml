@@ -7,24 +7,26 @@ name = "ultrack-td"
 dynamic = ["version"]
 description = ''
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "BSD-3-Clause"
 keywords = []
 authors = [
   { name = "Jordao Bragantini", email = "jordao.bragantini@czbiohub.org" },
+  { name = "Ilan Theodoro", email = "ilan.theodoro@example.com" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-    "tracksdata @ git+https://github.com/royerlab/tracksdata.git@dev",
+  "matplotlib>=3.9.4,<4",
+  "networkx>=3.2.1,<4",
+  "toolz",
+  "tracksdata @ git+https://github.com/royerlab/tracksdata.git@dev",
+  "numpy",
+  "scikit-image"
 ]
 
 [project.optional-dependencies]
@@ -46,7 +48,7 @@ module-name = "ultrack_td._rustlib"
 
 # https://docs.astral.sh/ruff
 [tool.ruff]
-target-version = "py310"
+target-version = "py313"
 src = ["src"]
 line-length = 120
 
@@ -103,6 +105,3 @@ omit = [
   "src/ultrack_td/conftest.py",
   "**/_test/*.py",
 ]
-
-[tool.uv.sources]
-tracksdata = { git = "https://github.com/royerlab/tracksdata.git", rev = "dev" }
