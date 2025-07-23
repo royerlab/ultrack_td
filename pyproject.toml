@@ -1,0 +1,106 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ultrack-td"
+dynamic = ["version"]
+description = ''
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-3-Clause"
+keywords = []
+authors = [
+  { name = "Jordao Bragantini", email = "jordao.bragantini@czbiohub.org" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+    "tracksdata @ git+https://github.com/royerlab/tracksdata.git@dev",
+    "higra",
+]
+
+[project.urls]
+Documentation = "https://github.com/royerlab/ultrack-td#readme"
+Issues = "https://github.com/royerlab/ultrack-td/issues"
+Source = "https://github.com/royerlab/ultrack-td"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/ultrack_td/__about__.py"
+
+# https://docs.astral.sh/ruff
+[tool.ruff]
+target-version = "py310"
+src = ["src"]
+line-length = 120
+
+# https://docs.astral.sh/ruff/rules
+[tool.ruff.lint]
+pydocstyle = { convention = "numpy" }
+ignore = ["E712"]
+select = [
+    "E",    # style errors
+    "W",    # style warnings
+    "F",    # flakes
+    "D417", # Missing argument descriptions in Docstrings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "C4",   # flake8-comprehensions
+    "B",    # flake8-bugbear
+    "A001", # flake8-builtins
+    "RUF",  # ruff-specific rules
+    "TID",  # flake8-tidy-imports
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["D", "S"]
+
+# https://docs.astral.sh/ruff/formatter/
+[tool.ruff.format]
+docstring-code-format = true
+skip-magic-trailing-comma = false # default is false
+
+# https://coverage.readthedocs.io/en/6.4/config.html
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "@njit",  # numba is not supported by coverage
+    "@jitclass",
+    "@overload",
+    "pragma: no cover", # Have to re-enable the standard pragma
+    "def __repr__", # Don't complain about missing debug-only code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",  # Ignore type checking
+    "if __name__ == .__main__.:", # Don't complain if non-runnable code isn't run:
+    "@(abc.)?abstractmethod", # Don't complain about abstract methods, they aren't run:
+    "def .*: \\.\\.\\.$",  # Exclude function headers that end with "..." (type stubs)
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+parallel = true
+omit = [
+  "src/ultrack_td/__about__.py",
+  "src/ultrack_td/conftest.py",
+  "**/_test/*.py",
+]
+
+[tool.uv.sources]
+tracksdata = { git = "https://github.com/royerlab/tracksdata.git", rev = "dev" }
