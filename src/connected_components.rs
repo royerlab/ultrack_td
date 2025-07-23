@@ -1,6 +1,7 @@
 use numpy::{PyArray2, PyReadonlyArray2, PyReadonlyArray3};
 use petgraph::graph::UnGraph;
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
 use std::collections::{HashMap, VecDeque};
 
 #[pyfunction]
@@ -382,85 +383,69 @@ fn components_to_python_dict_2d<'py>(
     py: Python<'py>,
     components: Vec<Component2D>,
 ) -> PyResult<PyObject> {
-    let mut result = Vec::new();
+    let mut result: Vec<PyObject> = Vec::new();
 
     for (idx, component) in components.into_iter().enumerate() {
-        let mut node_attrs = HashMap::new();
+        let node_attrs = PyDict::new(py);
 
-        node_attrs.insert("id".to_string(), idx.into_py(py));
-        node_attrs.insert("area".to_string(), component.pixels.len().into_py(py));
-        node_attrs.insert("y".to_string(), component.centroid.0.into_py(py));
-        node_attrs.insert("x".to_string(), component.centroid.1.into_py(py));
-        node_attrs.insert(
-            "frontier_score".to_string(),
-            component.frontier_score.into_py(py),
-        );
-        node_attrs.insert(
-            "mean_contour_value".to_string(),
-            component.mean_contour_value.into_py(py),
-        );
+        node_attrs.set_item("id", idx)?;
+        node_attrs.set_item("area", component.pixels.len())?;
+        node_attrs.set_item("y", component.centroid.0)?;
+        node_attrs.set_item("x", component.centroid.1)?;
+        node_attrs.set_item("frontier_score", component.frontier_score)?;
+        node_attrs.set_item("mean_contour_value", component.mean_contour_value)?;
 
         // Convert graph to Python-readable format
         let graph_data = convert_graph_2d_to_python(&component.graph, py)?;
-        node_attrs.insert("graph".to_string(), graph_data);
+        node_attrs.set_item("graph", graph_data)?;
 
         let pixels_vec: Vec<Vec<i32>> = component
             .pixels
             .into_iter()
             .map(|(i, j)| vec![i as i32, j as i32])
             .collect();
-        let pixels_py = PyArray2::from_vec2_bound(py, &pixels_vec)
-            .unwrap()
-            .into_py(py);
-        node_attrs.insert("pixels".to_string(), pixels_py);
+        let pixels_py = PyArray2::from_vec2(py, &pixels_vec).unwrap();
+        node_attrs.set_item("pixels", pixels_py)?;
 
-        result.push(node_attrs.into_py(py));
+        result.push(node_attrs.into());
     }
 
-    Ok(result.into_py(py))
+    Ok(PyList::new(py, result)?.into())
 }
 
 fn components_to_python_dict_3d<'py>(
     py: Python<'py>,
     components: Vec<Component3D>,
 ) -> PyResult<PyObject> {
-    let mut result = Vec::new();
+    let mut result: Vec<PyObject> = Vec::new();
 
     for (idx, component) in components.into_iter().enumerate() {
-        let mut node_attrs = HashMap::new();
+        let node_attrs = PyDict::new(py);
 
-        node_attrs.insert("id".to_string(), idx.into_py(py));
-        node_attrs.insert("area".to_string(), component.pixels.len().into_py(py));
-        node_attrs.insert("z".to_string(), component.centroid.0.into_py(py));
-        node_attrs.insert("y".to_string(), component.centroid.1.into_py(py));
-        node_attrs.insert("x".to_string(), component.centroid.2.into_py(py));
-        node_attrs.insert(
-            "frontier_score".to_string(),
-            component.frontier_score.into_py(py),
-        );
-        node_attrs.insert(
-            "mean_contour_value".to_string(),
-            component.mean_contour_value.into_py(py),
-        );
+        node_attrs.set_item("id", idx)?;
+        node_attrs.set_item("area", component.pixels.len())?;
+        node_attrs.set_item("z", component.centroid.0)?;
+        node_attrs.set_item("y", component.centroid.1)?;
+        node_attrs.set_item("x", component.centroid.2)?;
+        node_attrs.set_item("frontier_score", component.frontier_score)?;
+        node_attrs.set_item("mean_contour_value", component.mean_contour_value)?;
 
         // Convert graph to Python-readable format
         let graph_data = convert_graph_3d_to_python(&component.graph, py)?;
-        node_attrs.insert("graph".to_string(), graph_data);
+        node_attrs.set_item("graph", graph_data)?;
 
         let pixels_vec: Vec<Vec<i32>> = component
             .pixels
             .into_iter()
             .map(|(k, i, j)| vec![k as i32, i as i32, j as i32])
             .collect();
-        let pixels_py = PyArray2::from_vec2_bound(py, &pixels_vec)
-            .unwrap()
-            .into_py(py);
-        node_attrs.insert("pixels".to_string(), pixels_py);
+        let pixels_py = PyArray2::from_vec2(py, &pixels_vec).unwrap();
+        node_attrs.set_item("pixels", pixels_py)?;
 
-        result.push(node_attrs.into_py(py));
+        result.push(node_attrs.into());
     }
 
-    Ok(result.into_py(py))
+    Ok(PyList::new(py, result)?.into())
 }
 
 // TODO: remove this
@@ -468,7 +453,7 @@ fn convert_graph_2d_to_python<'py>(
     graph: &UnGraph<usize, f32>,
     py: Python<'py>,
 ) -> PyResult<PyObject> {
-    let mut graph_dict = HashMap::new();
+    let graph_dict = PyDict::new(py);
 
     // Extract nodes - already flattened as usize indices
     let mut nodes = Vec::new();
@@ -486,14 +471,14 @@ fn convert_graph_2d_to_python<'py>(
     }
 
     // Convert to Python arrays
-    let nodes_py = PyArray2::from_vec2_bound(py, &[nodes]).unwrap();
+    let nodes_py = PyArray2::from_vec2(py, &[nodes]).unwrap();
     let edges_vec: Vec<Vec<f32>> = edges;
-    let edges_py = PyArray2::from_vec2_bound(py, &edges_vec).unwrap();
+    let edges_py = PyArray2::from_vec2(py, &edges_vec).unwrap();
 
-    graph_dict.insert("nodes".to_string(), nodes_py.into_py(py));
-    graph_dict.insert("edges".to_string(), edges_py.into_py(py));
+    graph_dict.set_item("nodes", nodes_py)?;
+    graph_dict.set_item("edges", edges_py)?;
 
-    Ok(graph_dict.into_py(py))
+    Ok(graph_dict.into())
 }
 
 // TODO: remove this
@@ -501,7 +486,7 @@ fn convert_graph_3d_to_python<'py>(
     graph: &UnGraph<usize, f32>,
     py: Python<'py>,
 ) -> PyResult<PyObject> {
-    let mut graph_dict = HashMap::new();
+    let graph_dict = PyDict::new(py);
 
     // Extract nodes - already flattened as usize indices
     let mut nodes = Vec::new();
@@ -519,14 +504,14 @@ fn convert_graph_3d_to_python<'py>(
     }
 
     // Convert to Python arrays
-    let nodes_py = PyArray2::from_vec2_bound(py, &[nodes]).unwrap();
+    let nodes_py = PyArray2::from_vec2(py, &[nodes]).unwrap();
     let edges_vec: Vec<Vec<f32>> = edges;
-    let edges_py = PyArray2::from_vec2_bound(py, &edges_vec).unwrap();
+    let edges_py = PyArray2::from_vec2(py, &edges_vec).unwrap();
 
-    graph_dict.insert("nodes".to_string(), nodes_py.into_py(py));
-    graph_dict.insert("edges".to_string(), edges_py.into_py(py));
+    graph_dict.set_item("nodes", nodes_py)?;
+    graph_dict.set_item("edges", edges_py)?;
 
-    Ok(graph_dict.into_py(py))
+    Ok(graph_dict.into())
 }
 
 fn build_flattened_graph_2d(
