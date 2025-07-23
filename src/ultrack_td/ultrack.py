@@ -3,11 +3,9 @@ from typing import Any
 import numpy as np
 from numpy.typing import ArrayLike
 from toolz import curry
-
 from tracksdata.constants import DEFAULT_ATTR_KEYS
 from tracksdata.graph import BaseGraph
 from tracksdata.nodes._base_nodes import BaseNodesOperator
-from tracksdata.nodes._mask import Mask
 from tracksdata.utils._multiprocessing import multiprocessing_apply
 
 from ultrack_td._rustlib import hello_rust
@@ -23,7 +21,6 @@ class UltrackCandidateNodes(BaseNodesOperator):
         self._min_num_pixels = min_num_pixels
         self._max_num_pixels = max_num_pixels
         self._min_frontier = min_frontier
-        self._hierarchy_fun = hg.watershed_hierarchy_by_area
 
     def _init_nodes(self, graph: BaseGraph) -> None:
         raise NotImplementedError("Not implemented")
@@ -36,7 +33,6 @@ class UltrackCandidateNodes(BaseNodesOperator):
         foreground: ArrayLike,
         contours: ArrayLike,
     ) -> None:
-
         self._init_nodes(graph)
 
         if t is None:
@@ -59,11 +55,10 @@ class UltrackCandidateNodes(BaseNodesOperator):
         foreground: ArrayLike,
         contours: ArrayLike,
     ) -> list[dict[str, Any]]:
-
         foreground = np.asarray(foreground)
         contours = np.asarray(contours)
 
-        node_attrs = _compute_nodes(contours)
+        node_attrs = []  # TODO _compute_nodes(contours)
 
         for node_attr in node_attrs:
             node_attr[DEFAULT_ATTR_KEYS.T] = t
