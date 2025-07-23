@@ -1,0 +1,12 @@
+# Rust formatting configuration - stable features only
+
+# Basic formatting
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+
+# Misc
+match_block_trailing_comma = true
+use_small_heuristics = "Default"
+newline_style = "Unix"

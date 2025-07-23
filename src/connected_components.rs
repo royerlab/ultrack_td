@@ -16,11 +16,17 @@ pub fn compute_connected_components_2d<'py>(
 
     if foreground.shape() != contours.shape() {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "Foreground and contours arrays must have the same shape"
+            "Foreground and contours arrays must have the same shape",
         ));
     }
 
-    let components = find_components_2d(&foreground, &contours, min_num_pixels, max_num_pixels, min_frontier);
+    let components = find_components_2d(
+        &foreground,
+        &contours,
+        min_num_pixels,
+        max_num_pixels,
+        min_frontier,
+    );
     components_to_python_dict_2d(py, components)
 }
 
@@ -38,11 +44,17 @@ pub fn compute_connected_components_3d<'py>(
 
     if foreground.shape() != contours.shape() {
         return Err(pyo3::exceptions::PyValueError::new_err(
-            "Foreground and contours arrays must have the same shape"
+            "Foreground and contours arrays must have the same shape",
         ));
     }
 
-    let components = find_components_3d(&foreground, &contours, min_num_pixels, max_num_pixels, min_frontier);
+    let components = find_components_3d(
+        &foreground,
+        &contours,
+        min_num_pixels,
+        max_num_pixels,
+        min_frontier,
+    );
     components_to_python_dict_3d(py, components)
 }
 
@@ -60,7 +72,14 @@ pub fn compute_connected_components<'py>(
         foreground.extract::<PyReadonlyArray2<bool>>(),
         contours.extract::<PyReadonlyArray2<f64>>(),
     ) {
-        return compute_connected_components_2d(py, fg_2d, cont_2d, min_num_pixels, max_num_pixels, min_frontier);
+        return compute_connected_components_2d(
+            py,
+            fg_2d,
+            cont_2d,
+            min_num_pixels,
+            max_num_pixels,
+            min_frontier,
+        );
     }
 
     // Try to extract as 3D arrays
@@ -68,11 +87,18 @@ pub fn compute_connected_components<'py>(
         foreground.extract::<PyReadonlyArray3<bool>>(),
         contours.extract::<PyReadonlyArray3<f64>>(),
     ) {
-        return compute_connected_components_3d(py, fg_3d, cont_3d, min_num_pixels, max_num_pixels, min_frontier);
+        return compute_connected_components_3d(
+            py,
+            fg_3d,
+            cont_3d,
+            min_num_pixels,
+            max_num_pixels,
+            min_frontier,
+        );
     }
 
     Err(pyo3::exceptions::PyValueError::new_err(
-        "Arrays must be 2D or 3D numpy arrays"
+        "Arrays must be 2D or 3D numpy arrays",
     ))
 }
 
@@ -106,19 +132,12 @@ fn find_components_2d(
     for i in 0..height {
         for j in 0..width {
             if foreground[[i, j]] && !visited[i][j] {
-                let component = flood_fill_2d(
-                    foreground,
-                    contours,
-                    &mut visited,
-                    i,
-                    j,
-                    height,
-                    width,
-                );
+                let component =
+                    flood_fill_2d(foreground, contours, &mut visited, i, j, height, width);
 
                 if component.pixels.len() >= min_num_pixels
-                    && component.pixels.len() <= max_num_pixels {
-
+                    && component.pixels.len() <= max_num_pixels
+                {
                     if let Some(min_frontier_val) = min_frontier {
                         if component.frontier_score >= min_frontier_val {
                             components.push(component);
@@ -141,7 +160,11 @@ fn find_components_3d(
     max_num_pixels: usize,
     min_frontier: Option<f64>,
 ) -> Vec<Component3D> {
-    let (depth, height, width) = (foreground.shape()[0], foreground.shape()[1], foreground.shape()[2]);
+    let (depth, height, width) = (
+        foreground.shape()[0],
+        foreground.shape()[1],
+        foreground.shape()[2],
+    );
     let mut visited = vec![vec![vec![false; width]; height]; depth];
     let mut components = Vec::new();
 
@@ -162,8 +185,8 @@ fn find_components_3d(
                     );
 
                     if component.pixels.len() >= min_num_pixels
-                        && component.pixels.len() <= max_num_pixels {
-
+                        && component.pixels.len() <= max_num_pixels
+                    {
                         if let Some(min_frontier_val) = min_frontier {
                             if component.frontier_score >= min_frontier_val {
                                 components.push(component);
@@ -197,8 +220,13 @@ fn flood_fill_2d(
     queue.push_back((start_i, start_j));
     visited[start_i][start_j] = true;
 
-    // 8-connectivity for 2D
-    let directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)];
+    // 4-connectivity for 2D
+    let directions = [
+        (-1, 0),
+        (0, -1),
+        (0, 1),
+        (1, 0),
+    ];
 
     while let Some((i, j)) = queue.pop_front() {
         pixels.push((i, j));
@@ -262,17 +290,14 @@ fn flood_fill_3d(
     queue.push_back((start_k, start_i, start_j));
     visited[start_k][start_i][start_j] = true;
 
-    // 26-connectivity for 3D
+    // 6-connectivity for 3D
     let directions = [
-        (-1, -1, -1), (-1, -1, 0), (-1, -1, 1),
-        (-1, 0, -1), (-1, 0, 0), (-1, 0, 1),
-        (-1, 1, -1), (-1, 1, 0), (-1, 1, 1),
-        (0, -1, -1), (0, -1, 0), (0, -1, 1),
-        (0, 0, -1), (0, 0, 1),
-        (0, 1, -1), (0, 1, 0), (0, 1, 1),
-        (1, -1, -1), (1, -1, 0), (1, -1, 1),
-        (1, 0, -1), (1, 0, 0), (1, 0, 1),
-        (1, 1, -1), (1, 1, 0), (1, 1, 1),
+        (-1, 0, 0),
+        (0, -1, 0),
+        (0, 0, -1),
+        (0, 0, 1),
+        (0, 1, 0),
+        (1, 0, 0),
     ];
 
     while let Some((k, i, j)) = queue.pop_front() {
@@ -285,7 +310,13 @@ fn flood_fill_3d(
             let ni = i as i32 + di;
             let nj = j as i32 + dj;
 
-            if nk >= 0 && nk < depth as i32 && ni >= 0 && ni < height as i32 && nj >= 0 && nj < width as i32 {
+            if nk >= 0
+                && nk < depth as i32
+                && ni >= 0
+                && ni < height as i32
+                && nj >= 0
+                && nj < width as i32
+            {
                 let nk = nk as usize;
                 let ni = ni as usize;
                 let nj = nj as usize;
@@ -334,10 +365,17 @@ fn calculate_centroid_3d(pixels: &[(usize, usize, usize)]) -> (f64, f64, f64) {
     let sum_j: usize = pixels.iter().map(|(_, _, j)| *j).sum();
     let count = pixels.len() as f64;
 
-    (sum_k as f64 / count, sum_i as f64 / count, sum_j as f64 / count)
+    (
+        sum_k as f64 / count,
+        sum_i as f64 / count,
+        sum_j as f64 / count,
+    )
 }
 
-fn components_to_python_dict_2d<'py>(py: Python<'py>, components: Vec<Component2D>) -> PyResult<PyObject> {
+fn components_to_python_dict_2d<'py>(
+    py: Python<'py>,
+    components: Vec<Component2D>,
+) -> PyResult<PyObject> {
     let mut result = Vec::new();
 
     for (idx, component) in components.into_iter().enumerate() {
@@ -347,13 +385,23 @@ fn components_to_python_dict_2d<'py>(py: Python<'py>, components: Vec<Component2
         node_attrs.insert("area".to_string(), component.pixels.len().into_py(py));
         node_attrs.insert("centroid_i".to_string(), component.centroid.0.into_py(py));
         node_attrs.insert("centroid_j".to_string(), component.centroid.1.into_py(py));
-        node_attrs.insert("frontier_score".to_string(), component.frontier_score.into_py(py));
-        node_attrs.insert("mean_contour_value".to_string(), component.mean_contour_value.into_py(py));
+        node_attrs.insert(
+            "frontier_score".to_string(),
+            component.frontier_score.into_py(py),
+        );
+        node_attrs.insert(
+            "mean_contour_value".to_string(),
+            component.mean_contour_value.into_py(py),
+        );
 
-        let pixels_vec: Vec<Vec<i32>> = component.pixels.into_iter()
+        let pixels_vec: Vec<Vec<i32>> = component
+            .pixels
+            .into_iter()
             .map(|(i, j)| vec![i as i32, j as i32])
             .collect();
-        let pixels_py = PyArray2::from_vec2_bound(py, &pixels_vec).unwrap().into_py(py);
+        let pixels_py = PyArray2::from_vec2_bound(py, &pixels_vec)
+            .unwrap()
+            .into_py(py);
         node_attrs.insert("pixels".to_string(), pixels_py);
 
         result.push(node_attrs.into_py(py));
@@ -362,7 +410,10 @@ fn components_to_python_dict_2d<'py>(py: Python<'py>, components: Vec<Component2
     Ok(result.into_py(py))
 }
 
-fn components_to_python_dict_3d<'py>(py: Python<'py>, components: Vec<Component3D>) -> PyResult<PyObject> {
+fn components_to_python_dict_3d<'py>(
+    py: Python<'py>,
+    components: Vec<Component3D>,
+) -> PyResult<PyObject> {
     let mut result = Vec::new();
 
     for (idx, component) in components.into_iter().enumerate() {
@@ -373,13 +424,23 @@ fn components_to_python_dict_3d<'py>(py: Python<'py>, components: Vec<Component3
         node_attrs.insert("centroid_k".to_string(), component.centroid.0.into_py(py));
         node_attrs.insert("centroid_i".to_string(), component.centroid.1.into_py(py));
         node_attrs.insert("centroid_j".to_string(), component.centroid.2.into_py(py));
-        node_attrs.insert("frontier_score".to_string(), component.frontier_score.into_py(py));
-        node_attrs.insert("mean_contour_value".to_string(), component.mean_contour_value.into_py(py));
+        node_attrs.insert(
+            "frontier_score".to_string(),
+            component.frontier_score.into_py(py),
+        );
+        node_attrs.insert(
+            "mean_contour_value".to_string(),
+            component.mean_contour_value.into_py(py),
+        );
 
-        let pixels_vec: Vec<Vec<i32>> = component.pixels.into_iter()
+        let pixels_vec: Vec<Vec<i32>> = component
+            .pixels
+            .into_iter()
             .map(|(k, i, j)| vec![k as i32, i as i32, j as i32])
             .collect();
-        let pixels_py = PyArray2::from_vec2_bound(py, &pixels_vec).unwrap().into_py(py);
+        let pixels_py = PyArray2::from_vec2_bound(py, &pixels_vec)
+            .unwrap()
+            .into_py(py);
         node_attrs.insert("pixels".to_string(), pixels_py);
 
         result.push(node_attrs.into_py(py));

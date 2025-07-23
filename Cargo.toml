@@ -12,3 +12,16 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.21", features = ["extension-module"] }
 numpy = "0.21"
 ndarray = "0.15"
+
+[lints.clippy]
+# Focus on basic correctness and style, not complexity
+suspicious = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+
+# Allow common patterns in numerical/PyO3 code
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+too_many_arguments = "allow"
+ptr_arg = "allow"
