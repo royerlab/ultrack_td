@@ -45,3 +45,20 @@ repos:
       # Run the formatter.
       - id: ruff-format
         types_or: [python, pyi, jupyter]
+
+  # Rust formatting and linting
+  - repo: local
+    hooks:
+      - id: rust-format
+        name: rust format
+        entry: cargo fmt --all --
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+      - id: rust-clippy
+        name: rust clippy
+        entry: bash -c 'cargo clippy'
+        language: system
+        files: \.rs$
+        pass_filenames: false
