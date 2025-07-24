@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 
 mod connected_components;
 mod hierarchical_segmentation;
+mod mask;
 
 fn _rustlib<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(
@@ -20,5 +21,7 @@ fn _rustlib<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
         hierarchical_segmentation::hierarchical_segmentation,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(mask::create_component_mask_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(mask::create_component_mask_3d, m)?)?;
     Ok(())
 }
