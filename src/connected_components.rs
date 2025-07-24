@@ -1,4 +1,4 @@
-use numpy::{PyArray2, PyReadonlyArray2, PyReadonlyArray3};
+use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2, PyReadonlyArray3};
 use petgraph::graph::UnGraph;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -110,7 +110,58 @@ struct Component2D {
     centroid: (f64, f64),
     frontier_score: f64,
     mean_contour_value: f64,
-    graph: UnGraph<usize, f32>,
+    mask: ndarray::Array2<bool>,
+    bbox: ndarray::Array1<usize>,
+}
+
+impl Component2D {
+    fn new(pixels: Vec<(usize, usize)>, frontier_score: f64, mean_contour_value: f64) -> Self {
+        if pixels.is_empty() {
+            panic!("Cannot create component with empty pixels");
+        }
+
+        // Single pass to compute bounds and centroid
+        let mut y_min = usize::MAX;
+        let mut y_max = usize::MIN;
+        let mut x_min = usize::MAX;
+        let mut x_max = usize::MIN;
+        let mut y_sum = 0;
+        let mut x_sum = 0;
+
+        for &(y, x) in &pixels {
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_sum += y;
+            x_sum += x;
+        }
+
+        let centroid = (
+            y_sum as f64 / pixels.len() as f64,
+            x_sum as f64 / pixels.len() as f64,
+        );
+
+        // Create mask
+        let y_size = y_max - y_min + 1;
+        let x_size = x_max - x_min + 1;
+        let mut mask = ndarray::Array2::from_elem((y_size, x_size), false);
+
+        for &(y, x) in &pixels {
+            mask[[y - y_min, x - x_min]] = true;
+        }
+
+        let bbox = ndarray::Array1::from_vec(vec![y_min, x_min, y_max, x_max]);
+
+        Component2D {
+            pixels,
+            centroid,
+            frontier_score,
+            mean_contour_value,
+            mask,
+            bbox,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -119,7 +170,70 @@ struct Component3D {
     centroid: (f64, f64, f64),
     frontier_score: f64,
     mean_contour_value: f64,
-    graph: UnGraph<usize, f32>,
+    mask: ndarray::Array3<bool>,
+    bbox: ndarray::Array1<usize>,
+}
+
+impl Component3D {
+    fn new(
+        pixels: Vec<(usize, usize, usize)>,
+        frontier_score: f64,
+        mean_contour_value: f64,
+    ) -> Self {
+        if pixels.is_empty() {
+            panic!("Cannot create component with empty pixels");
+        }
+
+        // Single pass to compute bounds and centroid
+        let mut z_min = usize::MAX;
+        let mut z_max = usize::MIN;
+        let mut y_min = usize::MAX;
+        let mut y_max = usize::MIN;
+        let mut x_min = usize::MAX;
+        let mut x_max = usize::MIN;
+        let mut z_sum = 0;
+        let mut y_sum = 0;
+        let mut x_sum = 0;
+
+        for &(z, y, x) in &pixels {
+            z_min = z_min.min(z);
+            z_max = z_max.max(z);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            z_sum += z;
+            y_sum += y;
+            x_sum += x;
+        }
+
+        let centroid = (
+            z_sum as f64 / pixels.len() as f64,
+            y_sum as f64 / pixels.len() as f64,
+            x_sum as f64 / pixels.len() as f64,
+        );
+
+        // Create mask
+        let z_size = z_max - z_min + 1;
+        let y_size = y_max - y_min + 1;
+        let x_size = x_max - x_min + 1;
+        let mut mask = ndarray::Array3::from_elem((z_size, y_size, x_size), false);
+
+        for &(z, y, x) in &pixels {
+            mask[[z - z_min, y - y_min, x - x_min]] = true;
+        }
+
+        let bbox = ndarray::Array1::from_vec(vec![z_min, y_min, x_min, z_max, y_max, x_max]);
+
+        Component3D {
+            pixels,
+            centroid,
+            frontier_score,
+            mean_contour_value,
+            mask,
+            bbox,
+        }
+    }
 }
 
 fn find_components_2d(
@@ -131,30 +245,32 @@ fn find_components_2d(
 ) -> Vec<Component2D> {
     let (height, width) = (foreground.shape()[0], foreground.shape()[1]);
     let mut visited = vec![vec![false; width]; height];
-    let mut components = Vec::new();
+    let mut candidate_components = Vec::new();
 
     for i in 0..height {
         for j in 0..width {
             if foreground[[i, j]] && !visited[i][j] {
-                let component =
-                    flood_fill_2d(foreground, contours, &mut visited, i, j, height, width);
+                let components = flood_fill_2d(
+                    foreground,
+                    contours,
+                    &mut visited,
+                    i,
+                    j,
+                    height,
+                    width,
+                    min_num_pixels,
+                    max_num_pixels,
+                    min_frontier,
+                );
 
-                if component.pixels.len() >= min_num_pixels
-                    && component.pixels.len() <= max_num_pixels
-                {
-                    if let Some(min_frontier_val) = min_frontier {
-                        if component.frontier_score >= min_frontier_val {
-                            components.push(component);
-                        }
-                    } else {
-                        components.push(component);
-                    }
+                for component in components {
+                    candidate_components.push(component);
                 }
             }
         }
     }
 
-    components
+    candidate_components
 }
 
 fn find_components_3d(
@@ -170,13 +286,13 @@ fn find_components_3d(
         foreground.shape()[2],
     );
     let mut visited = vec![vec![vec![false; width]; height]; depth];
-    let mut components = Vec::new();
+    let mut candidate_components = Vec::new();
 
     for k in 0..depth {
         for i in 0..height {
             for j in 0..width {
                 if foreground[[k, i, j]] && !visited[k][i][j] {
-                    let component = flood_fill_3d(
+                    let components = flood_fill_3d(
                         foreground,
                         contours,
                         &mut visited,
@@ -186,25 +302,20 @@ fn find_components_3d(
                         depth,
                         height,
                         width,
+                        min_num_pixels,
+                        max_num_pixels,
+                        min_frontier,
                     );
 
-                    if component.pixels.len() >= min_num_pixels
-                        && component.pixels.len() <= max_num_pixels
-                    {
-                        if let Some(min_frontier_val) = min_frontier {
-                            if component.frontier_score >= min_frontier_val {
-                                components.push(component);
-                            }
-                        } else {
-                            components.push(component);
-                        }
+                    for component in components {
+                        candidate_components.push(component);
                     }
                 }
             }
         }
     }
 
-    components
+    candidate_components
 }
 
 fn flood_fill_2d(
@@ -215,9 +326,12 @@ fn flood_fill_2d(
     start_j: usize,
     height: usize,
     width: usize,
-) -> Component2D {
-    let mut queue = VecDeque::new();
-    let mut pixels = Vec::new();
+    min_num_pixels: usize,
+    max_num_pixels: usize,
+    min_frontier: Option<f64>,
+) -> Vec<Component2D> {
+    let mut queue = VecDeque::with_capacity(min_num_pixels);
+    let mut pixels = Vec::with_capacity(min_num_pixels);
     let mut contour_sum = 0.0;
     let mut boundary_pixels = 0;
 
@@ -233,20 +347,16 @@ fn flood_fill_2d(
 
         let mut is_boundary = false;
         for (di, dj) in &directions {
-            let ni = i as i32 + di;
-            let nj = j as i32 + dj;
-
-            if ni >= 0 && ni < height as i32 && nj >= 0 && nj < width as i32 {
-                let ni = ni as usize;
-                let nj = nj as usize;
-
-                if foreground[[ni, nj]] {
-                    if !visited[ni][nj] {
-                        visited[ni][nj] = true;
-                        queue.push_back((ni, nj));
+            if let (Some(ni), Some(nj)) = (i.checked_add_signed(*di), j.checked_add_signed(*dj)) {
+                if ni < height && nj < width {
+                    if foreground[[ni, nj]] {
+                        if !visited[ni][nj] {
+                            visited[ni][nj] = true;
+                            queue.push_back((ni, nj));
+                        }
+                    } else {
+                        is_boundary = true;
                     }
-                } else {
-                    is_boundary = true;
                 }
             } else {
                 is_boundary = true;
@@ -258,20 +368,31 @@ fn flood_fill_2d(
         }
     }
 
-    let centroid = calculate_centroid_2d(&pixels);
+    // TODO: you will compute these values per segment
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
     // Build graph with flattened node indices
-    let graph = build_flattened_graph_2d(&pixels, contours);
+    let (graph, node_to_pixel) = build_flattened_graph_2d(&pixels, contours);
 
-    Component2D {
-        pixels,
-        centroid,
-        frontier_score,
-        mean_contour_value,
-        graph,
+    // TODO: to be replaced by proper segmentation function
+    // use min_num_pixels, max_num_pixels and min_frontier to filter candidate components
+    let candidate_node_ids = vec![graph.node_indices().collect::<Vec<_>>()];
+
+    let mut candidate_components = Vec::new();
+
+    for node_ids in candidate_node_ids {
+        let selected_pixels = node_ids
+            .iter()
+            .map(|idx| node_to_pixel[&idx.index()])
+            .collect();
+
+        let component = Component2D::new(selected_pixels, frontier_score, mean_contour_value);
+
+        candidate_components.push(component);
     }
+
+    candidate_components
 }
 
 fn flood_fill_3d(
@@ -284,9 +405,12 @@ fn flood_fill_3d(
     depth: usize,
     height: usize,
     width: usize,
-) -> Component3D {
-    let mut queue = VecDeque::new();
-    let mut pixels = Vec::new();
+    min_num_pixels: usize,
+    max_num_pixels: usize,
+    min_frontier: Option<f64>,
+) -> Vec<Component3D> {
+    let mut queue = VecDeque::with_capacity(min_num_pixels);
+    let mut pixels = Vec::with_capacity(min_num_pixels);
     let mut contour_sum = 0.0;
     let mut boundary_pixels = 0;
 
@@ -309,28 +433,20 @@ fn flood_fill_3d(
 
         let mut is_boundary = false;
         for (dk, di, dj) in &directions {
-            let nk = k as i32 + dk;
-            let ni = i as i32 + di;
-            let nj = j as i32 + dj;
-
-            if nk >= 0
-                && nk < depth as i32
-                && ni >= 0
-                && ni < height as i32
-                && nj >= 0
-                && nj < width as i32
-            {
-                let nk = nk as usize;
-                let ni = ni as usize;
-                let nj = nj as usize;
-
-                if foreground[[nk, ni, nj]] {
-                    if !visited[nk][ni][nj] {
-                        visited[nk][ni][nj] = true;
-                        queue.push_back((nk, ni, nj));
+            if let (Some(nk), Some(ni), Some(nj)) = (
+                k.checked_add_signed(*dk),
+                i.checked_add_signed(*di),
+                j.checked_add_signed(*dj),
+            ) {
+                if nk < depth && ni < height && nj < width {
+                    if foreground[[nk, ni, nj]] {
+                        if !visited[nk][ni][nj] {
+                            visited[nk][ni][nj] = true;
+                            queue.push_back((nk, ni, nj));
+                        }
+                    } else {
+                        is_boundary = true;
                     }
-                } else {
-                    is_boundary = true;
                 }
             } else {
                 is_boundary = true;
@@ -342,70 +458,50 @@ fn flood_fill_3d(
         }
     }
 
-    let centroid = calculate_centroid_3d(&pixels);
+    // TODO: you will compute these values per segment
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
     // Build graph with flattened node indices
-    let graph = build_flattened_graph_3d(&pixels, contours);
+    let (graph, node_to_pixel) = build_flattened_graph_3d(&pixels, contours);
 
-    Component3D {
-        pixels,
-        centroid,
-        frontier_score,
-        mean_contour_value,
-        graph,
+    // TODO: to be replaced by proper segmentation function
+    // use min_num_pixels, max_num_pixels and min_frontier to filter candidate components
+    let candidate_node_ids = vec![graph.node_indices().collect::<Vec<_>>()];
+
+    let mut candidate_components = Vec::new();
+
+    for node_ids in candidate_node_ids {
+        let selected_pixels = node_ids
+            .iter()
+            .map(|idx| node_to_pixel[&idx.index()])
+            .collect();
+
+        let component = Component3D::new(selected_pixels, frontier_score, mean_contour_value);
+
+        candidate_components.push(component);
     }
-}
 
-fn calculate_centroid_2d(pixels: &[(usize, usize)]) -> (f64, f64) {
-    let sum_i: usize = pixels.iter().map(|(i, _)| *i).sum();
-    let sum_j: usize = pixels.iter().map(|(_, j)| *j).sum();
-    let count = pixels.len() as f64;
-
-    (sum_i as f64 / count, sum_j as f64 / count)
-}
-
-fn calculate_centroid_3d(pixels: &[(usize, usize, usize)]) -> (f64, f64, f64) {
-    let sum_k: usize = pixels.iter().map(|(k, _, _)| *k).sum();
-    let sum_i: usize = pixels.iter().map(|(_, i, _)| *i).sum();
-    let sum_j: usize = pixels.iter().map(|(_, _, j)| *j).sum();
-    let count = pixels.len() as f64;
-
-    (
-        sum_k as f64 / count,
-        sum_i as f64 / count,
-        sum_j as f64 / count,
-    )
+    candidate_components
 }
 
 fn components_to_python_dict_2d<'py>(
     py: Python<'py>,
     components: Vec<Component2D>,
 ) -> PyResult<PyObject> {
-    let mut result: Vec<PyObject> = Vec::new();
+    let mut result: Vec<PyObject> = Vec::with_capacity(components.len());
 
     for (idx, component) in components.into_iter().enumerate() {
         let node_attrs = PyDict::new(py);
 
         node_attrs.set_item("id", idx)?;
-        node_attrs.set_item("area", component.pixels.len())?;
+        node_attrs.set_item("num_pixels", component.pixels.len())?;
         node_attrs.set_item("y", component.centroid.0)?;
         node_attrs.set_item("x", component.centroid.1)?;
         node_attrs.set_item("frontier_score", component.frontier_score)?;
         node_attrs.set_item("mean_contour_value", component.mean_contour_value)?;
-
-        // Convert graph to Python-readable format
-        let graph_data = convert_graph_2d_to_python(&component.graph, py)?;
-        node_attrs.set_item("graph", graph_data)?;
-
-        let pixels_vec: Vec<Vec<i32>> = component
-            .pixels
-            .into_iter()
-            .map(|(i, j)| vec![i as i32, j as i32])
-            .collect();
-        let pixels_py = PyArray2::from_vec2(py, &pixels_vec).unwrap();
-        node_attrs.set_item("pixels", pixels_py)?;
+        node_attrs.set_item("mask", component.mask.into_pyarray(py))?;
+        node_attrs.set_item("bbox", component.bbox.into_pyarray(py))?;
 
         result.push(node_attrs.into());
     }
@@ -417,30 +513,20 @@ fn components_to_python_dict_3d<'py>(
     py: Python<'py>,
     components: Vec<Component3D>,
 ) -> PyResult<PyObject> {
-    let mut result: Vec<PyObject> = Vec::new();
+    let mut result: Vec<PyObject> = Vec::with_capacity(components.len());
 
     for (idx, component) in components.into_iter().enumerate() {
         let node_attrs = PyDict::new(py);
 
         node_attrs.set_item("id", idx)?;
-        node_attrs.set_item("area", component.pixels.len())?;
+        node_attrs.set_item("num_pixels", component.pixels.len())?;
         node_attrs.set_item("z", component.centroid.0)?;
         node_attrs.set_item("y", component.centroid.1)?;
         node_attrs.set_item("x", component.centroid.2)?;
         node_attrs.set_item("frontier_score", component.frontier_score)?;
         node_attrs.set_item("mean_contour_value", component.mean_contour_value)?;
-
-        // Convert graph to Python-readable format
-        let graph_data = convert_graph_3d_to_python(&component.graph, py)?;
-        node_attrs.set_item("graph", graph_data)?;
-
-        let pixels_vec: Vec<Vec<i32>> = component
-            .pixels
-            .into_iter()
-            .map(|(k, i, j)| vec![k as i32, i as i32, j as i32])
-            .collect();
-        let pixels_py = PyArray2::from_vec2(py, &pixels_vec).unwrap();
-        node_attrs.set_item("pixels", pixels_py)?;
+        node_attrs.set_item("mask", component.mask.into_pyarray(py))?;
+        node_attrs.set_item("bbox", component.bbox.into_pyarray(py))?;
 
         result.push(node_attrs.into());
     }
@@ -517,14 +603,16 @@ fn convert_graph_3d_to_python<'py>(
 fn build_flattened_graph_2d(
     pixels: &[(usize, usize)],
     contours: &ndarray::ArrayView2<f64>,
-) -> UnGraph<usize, f32> {
+) -> (UnGraph<usize, f32>, HashMap<usize, (usize, usize)>) {
     let mut graph = UnGraph::new_undirected();
     let mut pixel_to_node = HashMap::new();
+    let mut node_to_pixel = HashMap::new();
 
     // Add nodes with flattened indices
     for (idx, &pixel) in pixels.iter().enumerate() {
         let node_idx = graph.add_node(idx);
         pixel_to_node.insert(pixel, node_idx);
+        node_to_pixel.insert(node_idx.index(), pixel);
     }
 
     // 4-connectivity for 2D
@@ -550,20 +638,22 @@ fn build_flattened_graph_2d(
         }
     }
 
-    graph
+    (graph, node_to_pixel)
 }
 
 fn build_flattened_graph_3d(
     pixels: &[(usize, usize, usize)],
     contours: &ndarray::ArrayView3<f64>,
-) -> UnGraph<usize, f32> {
+) -> (UnGraph<usize, f32>, HashMap<usize, (usize, usize, usize)>) {
     let mut graph = UnGraph::new_undirected();
     let mut pixel_to_node = HashMap::new();
+    let mut node_to_pixel = HashMap::new();
 
     // Add nodes with flattened indices
     for (idx, &pixel) in pixels.iter().enumerate() {
         let node_idx = graph.add_node(idx);
         pixel_to_node.insert(pixel, node_idx);
+        node_to_pixel.insert(node_idx.index(), pixel);
     }
 
     // 6-connectivity for 3D
@@ -598,5 +688,5 @@ fn build_flattened_graph_3d(
         }
     }
 
-    graph
+    (graph, node_to_pixel)
 }
