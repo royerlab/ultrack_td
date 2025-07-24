@@ -1,4 +1,4 @@
-use numpy::{PyArray2, PyReadonlyArray2, PyReadonlyArray3};
+use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2, PyReadonlyArray3};
 use petgraph::graph::UnGraph;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -110,7 +110,8 @@ struct Component2D {
     centroid: (f64, f64),
     frontier_score: f64,
     mean_contour_value: f64,
-    graph: UnGraph<usize, f32>,
+    mask: ndarray::Array2<bool>,
+    bbox: ndarray::Array1<usize>,
 }
 
 #[derive(Debug)]
@@ -119,6 +120,8 @@ struct Component3D {
     centroid: (f64, f64, f64),
     frontier_score: f64,
     mean_contour_value: f64,
+    mask: ndarray::Array3<bool>,
+    bbox: ndarray::Array1<usize>,
     graph: UnGraph<usize, f32>,
 }
 
@@ -263,14 +266,20 @@ fn flood_fill_2d(
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
     // Build graph with flattened node indices
-    let graph = build_flattened_graph_2d(&pixels, contours);
+    let (graph, node_to_pixel) = build_flattened_graph_2d(&pixels, contours);
+
+    let (mask, bbox) = pixels_to_mask_2d(
+        &graph.node_indices().map(|idx| idx.index()).collect(),
+        &node_to_pixel,
+    );
 
     Component2D {
         pixels,
         centroid,
         frontier_score,
         mean_contour_value,
-        graph,
+        mask,
+        bbox,
     }
 }
 
@@ -347,13 +356,20 @@ fn flood_fill_3d(
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
     // Build graph with flattened node indices
-    let graph = build_flattened_graph_3d(&pixels, contours);
+    let (graph, node_to_pixel) = build_flattened_graph_3d(&pixels, contours);
+
+    let (mask, bbox) = pixels_to_mask_3d(
+        &graph.node_indices().map(|idx| idx.index()).collect(),
+        &node_to_pixel,
+    );
 
     Component3D {
         pixels,
         centroid,
         frontier_score,
         mean_contour_value,
+        mask,
+        bbox,
         graph,
     }
 }
@@ -394,18 +410,8 @@ fn components_to_python_dict_2d<'py>(
         node_attrs.set_item("x", component.centroid.1)?;
         node_attrs.set_item("frontier_score", component.frontier_score)?;
         node_attrs.set_item("mean_contour_value", component.mean_contour_value)?;
-
-        // Convert graph to Python-readable format
-        let graph_data = convert_graph_2d_to_python(&component.graph, py)?;
-        node_attrs.set_item("graph", graph_data)?;
-
-        let pixels_vec: Vec<Vec<i32>> = component
-            .pixels
-            .into_iter()
-            .map(|(i, j)| vec![i as i32, j as i32])
-            .collect();
-        let pixels_py = PyArray2::from_vec2(py, &pixels_vec).unwrap();
-        node_attrs.set_item("pixels", pixels_py)?;
+        node_attrs.set_item("mask", component.mask.into_pyarray(py))?;
+        node_attrs.set_item("bbox", component.bbox.into_pyarray(py))?;
 
         result.push(node_attrs.into());
     }
@@ -429,6 +435,8 @@ fn components_to_python_dict_3d<'py>(
         node_attrs.set_item("x", component.centroid.2)?;
         node_attrs.set_item("frontier_score", component.frontier_score)?;
         node_attrs.set_item("mean_contour_value", component.mean_contour_value)?;
+        node_attrs.set_item("mask", component.mask.into_pyarray(py))?;
+        node_attrs.set_item("bbox", component.bbox.into_pyarray(py))?;
 
         // Convert graph to Python-readable format
         let graph_data = convert_graph_3d_to_python(&component.graph, py)?;
@@ -517,14 +525,16 @@ fn convert_graph_3d_to_python<'py>(
 fn build_flattened_graph_2d(
     pixels: &[(usize, usize)],
     contours: &ndarray::ArrayView2<f64>,
-) -> UnGraph<usize, f32> {
+) -> (UnGraph<usize, f32>, HashMap<usize, (usize, usize)>) {
     let mut graph = UnGraph::new_undirected();
     let mut pixel_to_node = HashMap::new();
+    let mut node_to_pixel = HashMap::new();
 
     // Add nodes with flattened indices
     for (idx, &pixel) in pixels.iter().enumerate() {
         let node_idx = graph.add_node(idx);
         pixel_to_node.insert(pixel, node_idx);
+        node_to_pixel.insert(node_idx.index(), pixel);
     }
 
     // 4-connectivity for 2D
@@ -550,20 +560,22 @@ fn build_flattened_graph_2d(
         }
     }
 
-    graph
+    (graph, node_to_pixel)
 }
 
 fn build_flattened_graph_3d(
     pixels: &[(usize, usize, usize)],
     contours: &ndarray::ArrayView3<f64>,
-) -> UnGraph<usize, f32> {
+) -> (UnGraph<usize, f32>, HashMap<usize, (usize, usize, usize)>) {
     let mut graph = UnGraph::new_undirected();
     let mut pixel_to_node = HashMap::new();
+    let mut node_to_pixel = HashMap::new();
 
     // Add nodes with flattened indices
     for (idx, &pixel) in pixels.iter().enumerate() {
         let node_idx = graph.add_node(idx);
         pixel_to_node.insert(pixel, node_idx);
+        node_to_pixel.insert(node_idx.index(), pixel);
     }
 
     // 6-connectivity for 3D
@@ -598,5 +610,80 @@ fn build_flattened_graph_3d(
         }
     }
 
-    graph
+    (graph, node_to_pixel)
+}
+
+fn pixels_to_mask_2d(
+    nodes: &Vec<usize>,
+    node_to_pixel: &HashMap<usize, (usize, usize)>,
+) -> (ndarray::Array2<bool>, ndarray::Array1<usize>) {
+    let mut y_min = usize::MAX;
+    let mut y_max = usize::MIN;
+    let mut x_min = usize::MAX;
+    let mut x_max = usize::MIN;
+
+    // Single pass: find bounds and collect pixels
+    let pixels: Vec<_> = nodes
+        .iter()
+        .map(|&node_idx| {
+            let (y, x) = node_to_pixel[&node_idx];
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            (y, x)
+        })
+        .collect();
+
+    let y_size = y_max - y_min + 1;
+    let x_size = x_max - x_min + 1;
+
+    let mut mask = ndarray::Array2::from_elem((y_size, x_size), false);
+
+    for (y, x) in pixels {
+        mask[[y - y_min, x - x_min]] = true;
+    }
+    let bbox = ndarray::Array1::from_vec(vec![y_min, x_min, y_max, x_max]);
+
+    (mask, bbox)
+}
+
+fn pixels_to_mask_3d(
+    nodes: &Vec<usize>,
+    node_to_pixel: &HashMap<usize, (usize, usize, usize)>,
+) -> (ndarray::Array3<bool>, ndarray::Array1<usize>) {
+    let mut z_min = usize::MAX;
+    let mut z_max = usize::MIN;
+    let mut y_min = usize::MAX;
+    let mut y_max = usize::MIN;
+    let mut x_min = usize::MAX;
+    let mut x_max = usize::MIN;
+
+    // Single pass: find bounds and collect pixels
+    let pixels: Vec<_> = nodes
+        .iter()
+        .map(|&node_idx| {
+            let (z, y, x) = node_to_pixel[&node_idx];
+            z_min = z_min.min(z);
+            z_max = z_max.max(z);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            (z, y, x)
+        })
+        .collect();
+
+    let z_size = z_max - z_min + 1;
+    let y_size = y_max - y_min + 1;
+    let x_size = x_max - x_min + 1;
+
+    let mut mask = ndarray::Array3::from_elem((z_size, y_size, x_size), false);
+
+    for (z, y, x) in pixels {
+        mask[[z - z_min, y - y_min, x - x_min]] = true;
+    }
+    let bbox = ndarray::Array1::from_vec(vec![z_min, y_min, x_min, z_max, y_max, x_max]);
+
+    (mask, bbox)
 }
