@@ -8,8 +8,6 @@ from tracksdata.graph import BaseGraph
 from tracksdata.nodes._base_nodes import BaseNodesOperator
 from tracksdata.utils._multiprocessing import multiprocessing_apply
 
-from ultrack_td._rustlib import hello_rust
-
 
 class UltrackCandidateNodes(BaseNodesOperator):
     def __init__(
@@ -64,7 +62,3 @@ class UltrackCandidateNodes(BaseNodesOperator):
             node_attr[DEFAULT_ATTR_KEYS.T] = t
 
         return node_attrs
-
-
-if __name__ == "__main__":
-    print(hello_rust())
