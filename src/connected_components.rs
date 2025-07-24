@@ -114,6 +114,56 @@ struct Component2D {
     bbox: ndarray::Array1<usize>,
 }
 
+impl Component2D {
+    fn new(pixels: Vec<(usize, usize)>, frontier_score: f64, mean_contour_value: f64) -> Self {
+        if pixels.is_empty() {
+            panic!("Cannot create component with empty pixels");
+        }
+
+        // Single pass to compute bounds and centroid
+        let mut y_min = usize::MAX;
+        let mut y_max = usize::MIN;
+        let mut x_min = usize::MAX;
+        let mut x_max = usize::MIN;
+        let mut y_sum = 0;
+        let mut x_sum = 0;
+
+        for &(y, x) in &pixels {
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            y_sum += y;
+            x_sum += x;
+        }
+
+        let centroid = (
+            y_sum as f64 / pixels.len() as f64,
+            x_sum as f64 / pixels.len() as f64,
+        );
+
+        // Create mask
+        let y_size = y_max - y_min + 1;
+        let x_size = x_max - x_min + 1;
+        let mut mask = ndarray::Array2::from_elem((y_size, x_size), false);
+
+        for &(y, x) in &pixels {
+            mask[[y - y_min, x - x_min]] = true;
+        }
+
+        let bbox = ndarray::Array1::from_vec(vec![y_min, x_min, y_max, x_max]);
+
+        Component2D {
+            pixels,
+            centroid,
+            frontier_score,
+            mean_contour_value,
+            mask,
+            bbox,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Component3D {
     pixels: Vec<(usize, usize, usize)>,
@@ -122,6 +172,68 @@ struct Component3D {
     mean_contour_value: f64,
     mask: ndarray::Array3<bool>,
     bbox: ndarray::Array1<usize>,
+}
+
+impl Component3D {
+    fn new(
+        pixels: Vec<(usize, usize, usize)>,
+        frontier_score: f64,
+        mean_contour_value: f64,
+    ) -> Self {
+        if pixels.is_empty() {
+            panic!("Cannot create component with empty pixels");
+        }
+
+        // Single pass to compute bounds and centroid
+        let mut z_min = usize::MAX;
+        let mut z_max = usize::MIN;
+        let mut y_min = usize::MAX;
+        let mut y_max = usize::MIN;
+        let mut x_min = usize::MAX;
+        let mut x_max = usize::MIN;
+        let mut z_sum = 0;
+        let mut y_sum = 0;
+        let mut x_sum = 0;
+
+        for &(z, y, x) in &pixels {
+            z_min = z_min.min(z);
+            z_max = z_max.max(z);
+            y_min = y_min.min(y);
+            y_max = y_max.max(y);
+            x_min = x_min.min(x);
+            x_max = x_max.max(x);
+            z_sum += z;
+            y_sum += y;
+            x_sum += x;
+        }
+
+        let centroid = (
+            z_sum as f64 / pixels.len() as f64,
+            y_sum as f64 / pixels.len() as f64,
+            x_sum as f64 / pixels.len() as f64,
+        );
+
+        // Create mask
+        let z_size = z_max - z_min + 1;
+        let y_size = y_max - y_min + 1;
+        let x_size = x_max - x_min + 1;
+        let mut mask = ndarray::Array3::from_elem((z_size, y_size, x_size), false);
+
+        for &(z, y, x) in &pixels {
+            mask[[z - z_min, y - y_min, x - x_min]] = true;
+        }
+
+        let bbox = ndarray::Array1::from_vec(vec![z_min, y_min, x_min, z_max, y_max, x_max]);
+
+        Component3D {
+            pixels,
+            centroid,
+            frontier_score,
+            mean_contour_value,
+            mask,
+            bbox,
+        }
+    }
 }
 
 fn find_components_2d(
@@ -260,7 +372,6 @@ fn flood_fill_2d(
         }
     }
 
-    let centroid = calculate_centroid_2d(&pixels);
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
@@ -279,16 +390,7 @@ fn flood_fill_2d(
             .map(|idx| node_to_pixel[&idx.index()])
             .collect();
 
-        let (mask, bbox) = pixels_to_mask_2d(&selected_pixels);
-
-        let component = Component2D {
-            pixels: selected_pixels,
-            centroid,
-            frontier_score,
-            mean_contour_value,
-            mask,
-            bbox,
-        };
+        let component = Component2D::new(selected_pixels, frontier_score, mean_contour_value);
 
         candidate_components.push(component);
     }
@@ -367,7 +469,6 @@ fn flood_fill_3d(
         }
     }
 
-    let centroid = calculate_centroid_3d(&pixels);
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
@@ -386,42 +487,12 @@ fn flood_fill_3d(
             .map(|idx| node_to_pixel[&idx.index()])
             .collect();
 
-        let (mask, bbox) = pixels_to_mask_3d(&selected_pixels);
-
-        let component = Component3D {
-            pixels: selected_pixels,
-            centroid,
-            frontier_score,
-            mean_contour_value,
-            mask,
-            bbox,
-        };
+        let component = Component3D::new(selected_pixels, frontier_score, mean_contour_value);
 
         candidate_components.push(component);
     }
 
     candidate_components
-}
-
-fn calculate_centroid_2d(pixels: &[(usize, usize)]) -> (f64, f64) {
-    let sum_i: usize = pixels.iter().map(|(i, _)| *i).sum();
-    let sum_j: usize = pixels.iter().map(|(_, j)| *j).sum();
-    let count = pixels.len() as f64;
-
-    (sum_i as f64 / count, sum_j as f64 / count)
-}
-
-fn calculate_centroid_3d(pixels: &[(usize, usize, usize)]) -> (f64, f64, f64) {
-    let sum_k: usize = pixels.iter().map(|(k, _, _)| *k).sum();
-    let sum_i: usize = pixels.iter().map(|(_, i, _)| *i).sum();
-    let sum_j: usize = pixels.iter().map(|(_, _, j)| *j).sum();
-    let count = pixels.len() as f64;
-
-    (
-        sum_k as f64 / count,
-        sum_i as f64 / count,
-        sum_j as f64 / count,
-    )
 }
 
 fn components_to_python_dict_2d<'py>(
@@ -628,66 +699,4 @@ fn build_flattened_graph_3d(
     }
 
     (graph, node_to_pixel)
-}
-
-fn pixels_to_mask_2d(
-    pixels: &Vec<(usize, usize)>,
-) -> (ndarray::Array2<bool>, ndarray::Array1<usize>) {
-    let mut y_min = usize::MAX;
-    let mut y_max = usize::MIN;
-    let mut x_min = usize::MAX;
-    let mut x_max = usize::MIN;
-
-    // Single pass: find bounds and collect pixels
-    for (y, x) in pixels {
-        y_min = y_min.min(*y);
-        y_max = y_max.max(*y);
-        x_min = x_min.min(*x);
-        x_max = x_max.max(*x);
-    }
-
-    let y_size = y_max - y_min + 1;
-    let x_size = x_max - x_min + 1;
-
-    let mut mask = ndarray::Array2::from_elem((y_size, x_size), false);
-
-    for (y, x) in pixels {
-        mask[[y - y_min, x - x_min]] = true;
-    }
-    let bbox = ndarray::Array1::from_vec(vec![y_min, x_min, y_max, x_max]);
-
-    (mask, bbox)
-}
-
-fn pixels_to_mask_3d(
-    pixels: &Vec<(usize, usize, usize)>,
-) -> (ndarray::Array3<bool>, ndarray::Array1<usize>) {
-    let mut z_min = usize::MAX;
-    let mut z_max = usize::MIN;
-    let mut y_min = usize::MAX;
-    let mut y_max = usize::MIN;
-    let mut x_min = usize::MAX;
-    let mut x_max = usize::MIN;
-
-    for (z, y, x) in pixels {
-        z_min = z_min.min(*z);
-        z_max = z_max.max(*z);
-        y_min = y_min.min(*y);
-        y_max = y_max.max(*y);
-        x_min = x_min.min(*x);
-        x_max = x_max.max(*x);
-    }
-
-    let z_size = z_max - z_min + 1;
-    let y_size = y_max - y_min + 1;
-    let x_size = x_max - x_min + 1;
-
-    let mut mask = ndarray::Array3::from_elem((z_size, y_size, x_size), false);
-
-    for (z, y, x) in pixels {
-        mask[[z - z_min, y - y_min, x - x_min]] = true;
-    }
-    let bbox = ndarray::Array1::from_vec(vec![z_min, y_min, x_min, z_max, y_max, x_max]);
-
-    (mask, bbox)
 }
