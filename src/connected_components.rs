@@ -330,8 +330,8 @@ fn flood_fill_2d(
     max_num_pixels: usize,
     min_frontier: Option<f64>,
 ) -> Vec<Component2D> {
-    let mut queue = VecDeque::new();
-    let mut pixels = Vec::new();
+    let mut queue = VecDeque::with_capacity(min_num_pixels);
+    let mut pixels = Vec::with_capacity(min_num_pixels);
     let mut contour_sum = 0.0;
     let mut boundary_pixels = 0;
 
@@ -347,20 +347,16 @@ fn flood_fill_2d(
 
         let mut is_boundary = false;
         for (di, dj) in &directions {
-            let ni = i as i32 + di;
-            let nj = j as i32 + dj;
-
-            if ni >= 0 && ni < height as i32 && nj >= 0 && nj < width as i32 {
-                let ni = ni as usize;
-                let nj = nj as usize;
-
-                if foreground[[ni, nj]] {
-                    if !visited[ni][nj] {
-                        visited[ni][nj] = true;
-                        queue.push_back((ni, nj));
+            if let (Some(ni), Some(nj)) = (i.checked_add_signed(*di), j.checked_add_signed(*dj)) {
+                if ni < height && nj < width {
+                    if foreground[[ni, nj]] {
+                        if !visited[ni][nj] {
+                            visited[ni][nj] = true;
+                            queue.push_back((ni, nj));
+                        }
+                    } else {
+                        is_boundary = true;
                     }
-                } else {
-                    is_boundary = true;
                 }
             } else {
                 is_boundary = true;
@@ -413,8 +409,8 @@ fn flood_fill_3d(
     max_num_pixels: usize,
     min_frontier: Option<f64>,
 ) -> Vec<Component3D> {
-    let mut queue = VecDeque::new();
-    let mut pixels = Vec::new();
+    let mut queue = VecDeque::with_capacity(min_num_pixels);
+    let mut pixels = Vec::with_capacity(min_num_pixels);
     let mut contour_sum = 0.0;
     let mut boundary_pixels = 0;
 
@@ -437,28 +433,20 @@ fn flood_fill_3d(
 
         let mut is_boundary = false;
         for (dk, di, dj) in &directions {
-            let nk = k as i32 + dk;
-            let ni = i as i32 + di;
-            let nj = j as i32 + dj;
-
-            if nk >= 0
-                && nk < depth as i32
-                && ni >= 0
-                && ni < height as i32
-                && nj >= 0
-                && nj < width as i32
-            {
-                let nk = nk as usize;
-                let ni = ni as usize;
-                let nj = nj as usize;
-
-                if foreground[[nk, ni, nj]] {
-                    if !visited[nk][ni][nj] {
-                        visited[nk][ni][nj] = true;
-                        queue.push_back((nk, ni, nj));
+            if let (Some(nk), Some(ni), Some(nj)) = (
+                k.checked_add_signed(*dk),
+                i.checked_add_signed(*di),
+                j.checked_add_signed(*dj),
+            ) {
+                if nk < depth && ni < height && nj < width {
+                    if foreground[[nk, ni, nj]] {
+                        if !visited[nk][ni][nj] {
+                            visited[nk][ni][nj] = true;
+                            queue.push_back((nk, ni, nj));
+                        }
+                    } else {
+                        is_boundary = true;
                     }
-                } else {
-                    is_boundary = true;
                 }
             } else {
                 is_boundary = true;
@@ -501,7 +489,7 @@ fn components_to_python_dict_2d<'py>(
     py: Python<'py>,
     components: Vec<Component2D>,
 ) -> PyResult<PyObject> {
-    let mut result: Vec<PyObject> = Vec::new();
+    let mut result: Vec<PyObject> = Vec::with_capacity(components.len());
 
     for (idx, component) in components.into_iter().enumerate() {
         let node_attrs = PyDict::new(py);
@@ -525,7 +513,7 @@ fn components_to_python_dict_3d<'py>(
     py: Python<'py>,
     components: Vec<Component3D>,
 ) -> PyResult<PyObject> {
-    let mut result: Vec<PyObject> = Vec::new();
+    let mut result: Vec<PyObject> = Vec::with_capacity(components.len());
 
     for (idx, component) in components.into_iter().enumerate() {
         let node_attrs = PyDict::new(py);
