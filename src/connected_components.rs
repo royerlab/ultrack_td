@@ -372,6 +372,7 @@ fn flood_fill_2d(
         }
     }
 
+    // TODO: you will compute these values per segment
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
@@ -469,6 +470,7 @@ fn flood_fill_3d(
         }
     }
 
+    // TODO: you will compute these values per segment
     let mean_contour_value = contour_sum / pixels.len() as f64;
     let frontier_score = boundary_pixels as f64 / pixels.len() as f64;
 
@@ -505,7 +507,7 @@ fn components_to_python_dict_2d<'py>(
         let node_attrs = PyDict::new(py);
 
         node_attrs.set_item("id", idx)?;
-        node_attrs.set_item("area", component.pixels.len())?;
+        node_attrs.set_item("num_pixels", component.pixels.len())?;
         node_attrs.set_item("y", component.centroid.0)?;
         node_attrs.set_item("x", component.centroid.1)?;
         node_attrs.set_item("frontier_score", component.frontier_score)?;
@@ -529,7 +531,7 @@ fn components_to_python_dict_3d<'py>(
         let node_attrs = PyDict::new(py);
 
         node_attrs.set_item("id", idx)?;
-        node_attrs.set_item("area", component.pixels.len())?;
+        node_attrs.set_item("num_pixels", component.pixels.len())?;
         node_attrs.set_item("z", component.centroid.0)?;
         node_attrs.set_item("y", component.centroid.1)?;
         node_attrs.set_item("x", component.centroid.2)?;

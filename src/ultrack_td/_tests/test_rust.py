@@ -45,22 +45,17 @@ def test_connected_components_2d() -> None:
 
     # Check first component (top-left)
     comp1 = components[0]
-    assert comp1["area"] == 3  # 3 pixels
+    assert comp1["num_pixels"] == 3  # 3 pixels
     assert "y" in comp1
     assert "x" in comp1
     assert "frontier_score" in comp1
     assert "mean_contour_value" in comp1
-    assert "pixels" in comp1
-    assert "graph" in comp1
-
-    # Check graph structure
-    graph = comp1["graph"]
-    assert "nodes" in graph
-    assert "edges" in graph
+    assert "mask" in comp1
+    assert "bbox" in comp1
 
     # Check second component (right side)
     comp2 = components[1]
-    assert comp2["area"] == 3  # 3 pixels
+    assert comp2["num_pixels"] == 3  # 3 pixels
 
 
 def test_connected_components_3d() -> None:
@@ -84,19 +79,12 @@ def test_connected_components_3d() -> None:
 
     # Check component attributes exist
     for comp in components:
-        assert "area" in comp
         assert "z" in comp
         assert "y" in comp
         assert "x" in comp
         assert "frontier_score" in comp
         assert "mean_contour_value" in comp
-        assert "pixels" in comp
-        assert "graph" in comp
-
-        # Check graph structure
-        graph = comp["graph"]
-        assert "nodes" in graph
-        assert "edges" in graph
+        assert "num_pixels" in comp
 
 
 def test_connected_components_generic() -> None:
