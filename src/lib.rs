@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 mod connected_components;
 mod hierarchical_segmentation;
 
+#[pyo3::pymodule]
 fn _rustlib<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(
         connected_components::compute_connected_components,
