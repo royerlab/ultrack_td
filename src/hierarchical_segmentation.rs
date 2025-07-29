@@ -70,8 +70,7 @@ fn segment_mst(
         }
     });
 
-
-    let mut leaves_in_comp: Vec<Vec<usize>> = (0..n).map(|i| vec![i] ).collect();
+    let mut leaves_in_comp: Vec<Vec<usize>> = (0..n).map(|i| vec![i]).collect();
 
     let mut components = vec![];
     let mut seen = vec![false; n];
@@ -134,7 +133,6 @@ fn segment_mst(
         if ru == rv {
             continue;
         }
-
 
         let new_size = comp_size[ru] + comp_size[rv];
         if new_size <= max_size {

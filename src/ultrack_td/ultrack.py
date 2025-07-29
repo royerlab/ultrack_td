@@ -62,7 +62,3 @@ class UltrackCandidateNodes(BaseNodesOperator):
             node_attr[DEFAULT_ATTR_KEYS.T] = t
 
         return node_attrs
-
-
-if __name__ == "__main__":
-    pass
